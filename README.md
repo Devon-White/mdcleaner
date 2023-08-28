@@ -25,6 +25,24 @@ print(cleaned_content)
 Automatically detects file encoding.
 Converts non-ASCII characters to their closest ASCII representation.
 
+### Using the Formatted Option
+Imagine you have an MD file named `sample.md` with the following content:
+```markdown
+This is a test: {my_variable}
+```
+In your script, you can replace the `{my_variable}` placeholder with the value of a variable defined in your script:
+
+```python
+from mdcleaner import clean_md
+
+my_variable = "Hello, World!"
+
+# Read and format the content of "sample.md"
+cleaned_content = clean_md("sample.md", formatted=True)
+print(cleaned_content) # This will print: "This is a test: Hello, World!"
+```
+By setting the `formatted` option to `True`, any placeholders inside `{}` in your MD file will be replaced by the corresponding variables in your script.
+
 ## Contributing
 If you find any bugs or want to propose a new feature, please open an issue or submit a pull request.
 
