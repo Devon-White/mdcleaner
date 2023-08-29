@@ -29,7 +29,7 @@ def clean_md(file_path: str, formatted: Optional[bool] = False) -> str:
     with open(file_path, "r", encoding="utf-8") as file:
         content = file.read()
 
-    cleaned_content = unidecode(content)  # No unidecoding
+    cleaned_content = unidecode(content)
 
     if formatted:
         # Get the calling frame
