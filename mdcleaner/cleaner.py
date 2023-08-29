@@ -26,7 +26,9 @@ def clean_md(file_path: str, formatted: Optional[bool] = False) -> str:
     :return: Cleaned ASCII string
     """
 
-    with open(file_path, "r", encoding="utf-8") as file:
+    encoding = detect_encoding(file_path)
+
+    with open(file_path, "r", encoding=encoding) as file:
         content = file.read()
 
     cleaned_content = unidecode(content)
