@@ -1,3 +1,4 @@
+
 # MDCleaner
 
 A utility to clean and convert MD files to ASCII.
@@ -6,13 +7,13 @@ A utility to clean and convert MD files to ASCII.
 
 You can install MDCleaner via pip:
 
-```python
+```bash
 pip install mdcleaner
 ```
 
 ## Usage
 
-After installation, you can use the package in your Python script:
+After installation, you can use the package in your Python scripts:
 
 ```python
 from mdcleaner import clean_md
@@ -22,77 +23,59 @@ print(cleaned_content)
 ```
 
 ## Features
-- Automatically detects file encoding.
-- Converts non-ASCII characters to their closest ASCII representation.
-- Provides warnings for unmatched templates, ensuring placeholders without corresponding variables are retained as-is.
-- Handles improperly formatted templates, like unmatched curly braces {, and gives a clear warning while returning the content as-is.
+
+- **Encoding Detection**: The utility can automatically detect the file's encoding to ensure compatibility with various text files.
+- **ASCII Conversion**: Converts non-ASCII characters to their closest ASCII representation using the `unidecode` library.
+- **Template Replacements**: Provides an easy way to replace placeholders within the MD files with specific content.
+- **Graceful Error Handling**: Provides warnings for unmatched templates, ensuring placeholders without corresponding replacements are retained as-is. Additionally, handles improperly formatted templates and gives clear warnings.
 
 ### Using templates in your Markdown file
+
 Imagine you have an MD file named `sample.md` with the following content:
+
 ```markdown
 This is a test: {my_variable}
 ```
-In your script, you can replace the `{my_variable}` placeholder with the value of a variable defined in your script:
+
+In your script, you can replace the `{my_variable}` placeholder with a specific value:
 
 ```python
 from mdcleaner import clean_md
 
-# Read and format the content of "sample.md"
-replacements = {'user_name': 'Devon', 'role': 'admin'}
+replacements = {'my_variable': 'Hello, World!'}
 cleaned_content = clean_md("sample.md", contexts=replacements)
-print(cleaned_content) # This will print: "This is a test: Hello, World!"
+print(cleaned_content)  # This will print: "This is a test: Hello, World!"
 ```
-By passing `contexts` option with a `Dictionary`, any placeholders inside `{}` in your MD file will be replaced by the corresponding variables in your script.
-If a placeholder doesn't have a corresponding variable in your script, a warning will be logged, and the placeholder will be retained in the output.
 
-### Encoding Detection Bytes Param
-The `encoding_detection_bytes` parameter will allow the user to define how many bytes it will read from the md file before
-deciding on its encoding type. 
-#### Example
-```python
-global_test = "Global Test here"
+By passing the `contexts` parameter with a dictionary, any placeholders inside `{}` in your MD file will be replaced by the corresponding values.
 
+### Encoding Detection
 
-def greet():
-    new_test = "Local Test here"
-    context = {'new_test': new_test, 'global_test': global_test}
-    print(clean_md(file_path='test.md', contexts=context, encoding_detection_bytes=500))
+MDCleaner reads a certain number of bytes from the file to determine its encoding:
 
+- By default, it reads the first 1024 bytes.
+- You can specify a different number of bytes using the `encoding_detection_bytes` parameter.
+- If you set `encoding_detection_bytes` to 'auto', the entire file will be read to determine its encoding.
+- If no encoding is specified, the default option used is `utf-8`.
 
-greet()
-```
-In the above example, `clean_md` will read the first 500 bytes before deciding its encoding type. This is helpful when
-dealing with larger files that have a lot of bytes. The default for `encoding_detection_bytes` is `1024`.
-
-Additionally, you can pass the `string` value of `auto` inside `encoding_detection_bytes` which will allot it to read the entire
-file content before making a decision.
+Example:
 
 ```python
-global_test = "Global Test here"
-
-def greet():
-    new_test = "Local Test here"
-    context = {'new_test': new_test, 'global_test': global_test}
-    print(clean_md(file_path='test.md', contexts=context, encoding_detection_bytes='auto'))
+clean_md("sample.md", encoding_detection_bytes=500)
 ```
 
 ### Manual Encoding
-If you know the type of encoding of the file beforehand, you can specify the encoding type by using the `manual_encoding`
-parameter. This will allow the script to bypass the encoding detection when reading the md file. If the `manual_encoding`
-provided is **invalid**, we will catch the error and then retry with encoding detection.
 
-We will assume in our Markdown file, the encoding type is `utf-8`, and pass it in `manual_encoding` like such:
+If you're certain about the encoding of your file, you can specify it directly using the `encoding` parameter, which bypasses the automatic detection process:
+
 ```python
-global_test = "Global Test here"
-
-def greet():
-    new_test = "Local Test here"
-    context = {'new_test': new_test, 'global_test': global_test}
-    print(clean_md(file_path='test.md', contexts=context, encoding_detection_bytes='auto', manual_encoding='utf-8'))
+clean_md("sample.md", encoding="utf-8")
 ```
 
 ## Contributing
+
 If you find any bugs or want to propose a new feature, please open an issue or submit a pull request.
 
 ## License
+
 This project is licensed under the MIT License. See the LICENSE.txt file for details.
