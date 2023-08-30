@@ -2,8 +2,9 @@ import os
 from typing import Optional, Dict, Any, Union, Iterator
 import chardet
 import re
-from unidecode import unidecode
 import logging
+
+from unidecode import unidecode
 
 logger = logging.getLogger('clean_md')
 
@@ -20,8 +21,7 @@ class EncodingDetectionError(Exception):
 COMPILED_REGEX = re.compile(r'\{([^{}]+)}')
 
 
-def read_in_chunks(file,
-                   chunk_size: int) -> Iterator[bytes]:
+def read_in_chunks(file, chunk_size: int) -> Iterator[bytes]:
     """Generator to read a file in chunks."""
     while True:
         data = file.read(chunk_size)
@@ -32,35 +32,31 @@ def read_in_chunks(file,
 
 def detect_encoding(file_path: str,
                     num_bytes: Optional[Union[int, str]] = 1024,
-                    manual_encoding: Optional[str] = None) -> str:
-    if manual_encoding:
-        logger.warning(f"Manual encoding '{manual_encoding}' provided. Skipping automatic detection.")
-
-        # Verifying that the provided manual encoding works for the file.
+                    encoding: str = 'utf-8') -> str:
+    if encoding != 'auto':
         try:
-            with open(file_path, 'r', encoding=manual_encoding) as f:
-                # Just read a small portion to verify the encoding is correct.
+            with open(file_path, 'r', encoding=encoding) as f:
                 f.read(num_bytes)
-            return manual_encoding
+            return encoding
         except LookupError:
             logger.warning(
-                f"File {file_path} cannot be read with the provided manual encoding '{manual_encoding}'. Proceeding with automatic detection.")
+                f"File {file_path} cannot be read with the provided manual encoding '{encoding}'. Proceeding with automatic detection.")
+        except Exception as e:
+            logger.warning(
+                f"Error reading file {file_path} with encoding '{encoding}': {e}. Proceeding with automatic detection.")
 
+    # If encoding is 'auto' or there's an error with the provided encoding, detect encoding automatically
     detector = chardet.universaldetector.UniversalDetector()
-
     try:
         if num_bytes == 'auto':
             num_bytes = os.path.getsize(file_path)
-
         with open(file_path, 'rb') as f:
             for block in read_in_chunks(f, min(num_bytes, 1024)):
                 detector.feed(block)
                 if detector.done:
                     break
                 num_bytes -= 1024
-
             detector.close()
-
     except FileNotFoundError:
         logger.error(f"File {file_path} not found.")
         raise FileReadError(f"File {file_path} not found.")
@@ -82,8 +78,7 @@ def perform_replacements(content: str, replacements: Optional[Dict[str, Any]] = 
     return COMPILED_REGEX.sub(lambda m: replacement_callback(m, replacements), content)
 
 
-def replacement_callback(match: re.Match,
-                         replacements: Optional[Dict[str, Any]]) -> str:
+def replacement_callback(match: 're.Match', replacements: Optional[Dict[str, Any]]) -> str:
     key: str = match.group(1)
     if not replacements or key not in replacements:
         logger.warning(f"No value found for template '{key}'. Retaining it as-is.")
@@ -94,19 +89,17 @@ def replacement_callback(match: re.Match,
 def clean_md(file_path: str,
              contexts: Optional[Dict[str, Any]] = None,
              encoding_detection_bytes: Optional[Union[int, str]] = 1024,
-             manual_encoding: Optional[str] = None) -> str:
+             encoding: Optional[str] = 'utf-8') -> str:
     if not os.path.exists(file_path):
         raise FileReadError(f"File {file_path} not found.")
-
     try:
-        encoding = detect_encoding(file_path, encoding_detection_bytes, manual_encoding)
-
+        encoding = detect_encoding(file_path, encoding_detection_bytes, encoding)
         with open(file_path, "r", encoding=encoding) as file:
-            content = unidecode(file.read())
+            content = file.read()
 
+        content = unidecode(content)
         content = perform_replacements(content, contexts)
         return content
-
     except (FileReadError, EncodingDetectionError):
         raise
     except Exception as e:
