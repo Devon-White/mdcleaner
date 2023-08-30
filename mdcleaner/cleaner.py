@@ -1,71 +1,113 @@
+import os
+from typing import Optional, Dict, Any, Union, Iterator
 import chardet
 import re
 from unidecode import unidecode
-from typing import Optional, Match, Dict, Set, List, Any
-import inspect
 import logging
 
-# Configure the logging module
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
+logger = logging.getLogger('clean_md')
 
 
-def detect_encoding(file_path: str) -> str:
-    """Detects the encoding of a given file."""
-    with open(file_path, 'rb') as f:
-        result = chardet.detect(f.read())
-    return result['encoding']
+class FileReadError(Exception):
+    pass
 
 
-def clean_md(file_path: str, formatted: Optional[bool] = False) -> str:
-    """
-    Converts the content of a .md file to a cleaned ASCII format.
-    If formatted is True, the contents inside {} are replaced with their respective values in the calling context.
-    Double brackets {{}} and unmatched single brackets are considered improperly formatted.
-    :param file_path: Path to the .md file
-    :param formatted: If True, replaces the content inside {} with their respective values from the calling context.
-    :return: Cleaned ASCII string
-    """
+class EncodingDetectionError(Exception):
+    pass
 
-    encoding = detect_encoding(file_path)
 
-    with open(file_path, "r", encoding=encoding) as file:
-        content = file.read()
+# Moved regex compilation outside of function to compile only once
+COMPILED_REGEX = re.compile(r'\{([^{}]+)}')
 
-    cleaned_content = unidecode(content)
 
-    if formatted:
-        # Get the calling frame
-        frame: inspect.FrameType = inspect.currentframe().f_back
-        # Get both local and global variables from the calling context
-        all_vars: Dict[str, Any] = {**frame.f_globals, **frame.f_locals}
+def read_in_chunks(file,
+                   chunk_size: int) -> Iterator[bytes]:
+    """Generator to read a file in chunks."""
+    while True:
+        data = file.read(chunk_size)
+        if not data:
+            break
+        yield data
 
-        # Identify and log improperly formatted templates, including double brackets
-        misformatted_templates: Set[str] = set(re.findall(r'\{{2,}[^}]+?}}|\{[^})]+?\)', cleaned_content))
-        for template in misformatted_templates:
-            logging.getLogger('clean_md').warning(
-                f"Improperly formatted template: '{template}'. Retaining it as-is.")
-            cleaned_content = cleaned_content.replace(template, template)  # Retain as is
 
-        # List to hold parts of misformatted templates that should be ignored
-        ignore_list: List[str] = []
-        for misformatted in misformatted_templates:
-            if misformatted.startswith("{{") and misformatted.endswith("}}"):
-                inner_part: str = "{" + misformatted[2:-2]
-                ignore_list.append(inner_part)
+def detect_encoding(file_path: str,
+                    num_bytes: Optional[Union[int, str]] = 1024,
+                    manual_encoding: Optional[str] = None) -> str:
+    if manual_encoding:
+        logger.warning(f"Manual encoding '{manual_encoding}' provided. Skipping automatic detection.")
 
-        # Only process templates not in the ignore_list
-        def replacement_callback(match: Match[str]) -> str:
-            template: str = match.group(0)
-            key: str = match.group(1)
-            if template in ignore_list:
-                return template  # Return as is
-            if key not in all_vars:
-                logging.getLogger('clean_md').warning(
-                    f"No value found for template '{key}'. Retaining it as-is.")
-                return template  # Return the original if not found or invalid
-            return all_vars[key]
+        # Verifying that the provided manual encoding works for the file.
+        try:
+            with open(file_path, 'r', encoding=manual_encoding) as f:
+                # Just read a small portion to verify the encoding is correct.
+                f.read(num_bytes)
+            return manual_encoding
+        except LookupError:
+            logger.warning(
+                f"File {file_path} cannot be read with the provided manual encoding '{manual_encoding}'. Proceeding with automatic detection.")
 
-        # Use re.sub with callback to replace single bracket templates
-        cleaned_content = re.sub(r'\{(?![{])([^})]+?)}(?!})', replacement_callback, cleaned_content)
+    detector = chardet.universaldetector.UniversalDetector()
 
-    return cleaned_content
+    try:
+        if num_bytes == 'auto':
+            num_bytes = os.path.getsize(file_path)
+
+        with open(file_path, 'rb') as f:
+            for block in read_in_chunks(f, min(num_bytes, 1024)):
+                detector.feed(block)
+                if detector.done:
+                    break
+                num_bytes -= 1024
+
+            detector.close()
+
+    except FileNotFoundError:
+        logger.error(f"File {file_path} not found.")
+        raise FileReadError(f"File {file_path} not found.")
+    except OSError as e:
+        logger.error(f"Error reading file {file_path}: {e}")
+        raise FileReadError(f"Error reading file {file_path}. Cause: {e}")
+    except Exception as e:
+        logger.error(f"Error detecting encoding: {e}")
+        raise EncodingDetectionError(f"Error detecting encoding for {file_path}. Cause: {e}")
+
+    if not detector.result['encoding']:
+        logger.warning("chardet failed to detect encoding. Falling back to 'utf-8'.")
+        return 'utf-8'
+
+    return detector.result['encoding']
+
+
+def perform_replacements(content: str, replacements: Optional[Dict[str, Any]] = None) -> str:
+    return COMPILED_REGEX.sub(lambda m: replacement_callback(m, replacements), content)
+
+
+def replacement_callback(match: re.Match,
+                         replacements: Optional[Dict[str, Any]]) -> str:
+    key: str = match.group(1)
+    if not replacements or key not in replacements:
+        logger.warning(f"No value found for template '{key}'. Retaining it as-is.")
+        return match.group(0)
+    return str(replacements[key])
+
+
+def clean_md(file_path: str,
+             contexts: Optional[Dict[str, Any]] = None,
+             encoding_detection_bytes: Optional[Union[int, str]] = 1024,
+             manual_encoding: Optional[str] = None) -> str:
+    if not os.path.exists(file_path):
+        raise FileReadError(f"File {file_path} not found.")
+
+    try:
+        encoding = detect_encoding(file_path, encoding_detection_bytes, manual_encoding)
+
+        with open(file_path, "r", encoding=encoding) as file:
+            content = unidecode(file.read())
+
+        content = perform_replacements(content, contexts)
+        return content
+
+    except (FileReadError, EncodingDetectionError):
+        raise
+    except Exception as e:
+        raise FileReadError(f"Error reading or processing file {file_path}. Cause: {e}")
